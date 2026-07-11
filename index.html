@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LL Motion Tracking Flight Trainer - Secure Portal</title>
+    
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f5f5;
+            font-family: 'Roboto', sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        /* Secure Login Screen Overlay */
+        #login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: #f5f5f5;
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .login-card {
+            width: 320px;
+            padding: 30px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            text-align: center;
+        }
+        .login-card h3 {
+            margin-top: 0;
+            margin-bottom: 25px;
+            color: #3f51b5;
+            font-size: 22px;
+            font-weight: 500;
+        }
+        .login-input-group {
+            margin-bottom: 15px;
+            width: 100%;
+        }
+        .login-btn {
+            width: 100%;
+            margin-top: 15px;
+        }
+        #login-error {
+            color: #d50000;
+            font-size: 13px;
+            margin-top: 12px;
+            display: none;
+            font-weight: bold;
+        }
+        
+        /* Main Application Layout (Hidden until authorized) */
+        #main-app {
+            display: none;
+            flex-direction: column;
+            align-items: center;
+            width: 100%;
+        }
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            justify-content: center;
+            max-width: 1300px;
+            width: 100%;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            padding: 15px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        #video-container {
+            position: relative;
+            width: 480px;
+            height: 360px;
+        }
+        video, canvas#pose-canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 480px;
+            height: 360px;
+            border-radius: 6px;
+        }
+        canvas#pose-canvas {
+            z-index: 2;
+        }
+        #three-container {
+            width: 640px;
+            height: 480px;
+            border-radius: 8px;
+            overflow: hidden;
+            background: #87CEEB;
+        }
+        .controls-card {
+            width: 100%;
+            max-width: 1140px;
+            margin-top: 20px;
+        }
+        .angle-display {
+            font-size: 16px;
+            margin: 5px 0;
+            font-weight: bold;
+        }
+        .hip { color: #ff5722; }
+        .knee { color: #4caf50; }
+        .ankle { color: #2196f3; }
+        
+        .status-mesh {
+            margin-top: 10px;
+            padding: 8px;
+            background: #eee;
+            border-radius: 4px;
+            width: 100%;
+            text-align: center;
+            font-weight: bold;
+            font-size: 16px;
+        }
+        .hud-row {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+            margin-bottom: 10px;
+        }
+        .score-board {
+            background: #333;
+            color: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .timer-board {
+            background: #dc143c;
+            color: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 16px;
+            font-weight: bold;
+        }
+        .setup-section {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px dashed #ccc;
+            width: 100%;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="login-overlay">
+        <div class="login-card">
+            <h3>Trainer Portal Secure Access</h3>
+            <div class="login-input-group mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                <input class="mdl-textfield__input" type="text" id="username" autocomplete="off">
+                <label class="mdl-textfield__label" for="username">Username</label>
+            </div>
+            <div class="login-input-group mdl-textfield mdl-js-textfield mdl-textfield--floating-label">
+                <input class="mdl-textfield__input" type="password" id="password">
+                <label class="mdl-textfield__label" for="password">Password</label>
+            </div>
+            <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored login-btn" onclick="validateLogin()">
+                Login
+            </button>
+            <div id="login-error">Invalid Username or Password</div>
+        </div>
+    </div>
+
+    <div id="main-app">
+        <h1>Lower Limb Flight Trainer: Timed Coin Hunt</h1>
+        <p>Select your training joint, choose a timer duration, calibrate your range boundaries, and fly!</p>
+
+        <div class="container">
+            <div class="card">
+                <h3>Configuration & Camera</h3>
+                
+                <div class="setup-section">
+                    <strong>1. Target Control Joint:</strong><br><br>
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="joint-hip">
+                        <input type="radio" id="joint-hip" class="mdl-radio__button" name="joint-select" value="hip" checked>
+                        <span class="mdl-radio__label hip">Hip Motion Tracking</span>
+                    </label><br>
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="joint-knee">
+                        <input type="radio" id="joint-knee" class="mdl-radio__button" name="joint-select" value="knee">
+                        <span class="mdl-radio__label knee">Knee Motion Tracking</span>
+                    </label><br>
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="joint-ankle">
+                        <input type="radio" id="joint-ankle" class="mdl-radio__button" name="joint-select" value="ankle">
+                        <span class="mdl-radio__label ankle">Ankle Motion Tracking</span>
+                    </label>
+                </div>
+
+                <div class="setup-section">
+                    <strong>2. Session Time Period:</strong><br><br>
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="time-5">
+                        <input type="radio" id="time-5" class="mdl-radio__button" name="time-select" value="5" checked>
+                        <span class="mdl-radio__label">5 Minutes</span>
+                    </label>&nbsp;&nbsp;
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="time-10">
+                        <input type="radio" id="time-10" class="mdl-radio__button" name="time-select" value="10">
+                        <span class="mdl-radio__label">10 Minutes</span>
+                    </label>&nbsp;&nbsp;
+                    <label class="mdl-radio mdl-js-radio mdl-js-ripple-effect" for="time-15">
+                        <input type="radio" id="time-15" class="mdl-radio__button" name="time-select" value="15">
+                        <span class="mdl-radio__label">15 Minutes</span>
+                    </label>
+                    <br><br>
+                    <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" id="start-session-btn" onclick="startTimerSession()">
+                        Start Session Timer
+                    </button>
+                </div>
+
+                <div id="video-container">
+                    <video id="input-video" playsinline style="display:none;"></video>
+                    <canvas id="pose-canvas" width="480" height="360"></canvas>
+                </div>
+            </div>
+
+            <div class="card">
+                <h3>3D Flight & Joint Tracking Space</h3>
+                <div class="hud-row">
+                    <div class="score-board">Coins: <span id="score-val">0</span></div>
+                    <div class="timer-board">Time Remaining: <span id="timer-val">05:00</span></div>
+                </div>
+                <div id="three-container"></div>
+                <div id="flight-info" class="status-mesh">Calibrate your limit targets below to start!</div>
+            </div>
+        </div>
+
+        <div class="card controls-card">
+            <h3>3. Calibration Boundaries</h3>
+            <div style="display: flex; justify-content: space-between; width: 100%; flex-wrap: wrap;">
+                <div>
+                    <h4>Current Real-Time Angles</h4>
+                    <div class="angle-display hip">Hip Angle: <span id="current-hip">--</span>°</div>
+                    <div class="angle-display knee">Knee Angle: <span id="current-knee">--</span>°</div>
+                    <div class="angle-display ankle">Ankle Angle: <span id="current-ankle">--</span>°</div>
+                </div>
+                <div>
+                    <h4>Start Position (Low Altitude)</h4>
+                    <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" onclick="recordPosition('start')">
+                        Record Start Angle
+                    </button>
+                    <div id="start-angles-record" style="margin-top: 5px; color: #555;">Not Recorded</div>
+                </div>
+                <div>
+                    <h4>End Position (High Altitude)</h4>
+                    <button class="mdl-button mdl-js-button mdl-button--raised mdl-button--accent" onclick="recordPosition('end')">
+                        Record End Angle
+                    </button>
+                    <div id="end-angles-record" style="margin-top: 5px; color: #555;">Not Recorded</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Security Credentials Check ---
+        function validateLogin() {
+            const userIn = document.getElementById('username').value;
+            const passIn = document.getElementById('password').value;
+            const errDiv = document.getElementById('login-error');
+
+            if (userIn === "ychocc" && passIn === "YCHot123") {
+                document.getElementById('login-overlay').style.display = 'none';
+                document.getElementById('main-app').style.display = 'flex';
+                initAppEngine();
+            } else {
+                errDiv.style.display = 'block';
+            }
+        }
+
+        document.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' && document.getElementById('login-overlay').style.display !== 'none') {
+                validateLogin();
+            }
+        });
+
+        // --- Flight Application Logic ---
+        const videoElement = document.getElementById('input-video');
+        const canvasElement = document.getElementById('pose-canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+
+        let currentAngles = { hip: 180, knee: 180, ankle: 90 };
+        let startAngles = { hip: null, knee: null, ankle: null };
+        let endAngles = { hip: null, knee: null, ankle: null };
+
+        let score = 0;
+        let totalSeconds = 300; 
+        let sessionTimerInterval = null;
+        let isSessionRunning = false;
+
+        let scene, camera, renderer, airplane, ground;
+        let hipDot, kneeDot, ankleDot, trackingLine;
+        let coins = [];
+        const heightLevels = [1.5, 3.0, 4.5, 6.0, 7.5];
+
+        function init3D() {
+            const container = document.getElementById('three-container');
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+            
+            camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 4.5, 12);
+            camera.lookAt(0, 4.5, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            container.appendChild(renderer.domElement);
+
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
+            scene.add(ambientLight);
+            const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            dirLight.position.set(10, 20, 10);
+            scene.add(dirLight);
+
+            const groundGeo = new THREE.PlaneGeometry(100, 500);
+            const groundMat = new THREE.MeshLambertMaterial({ color: 0x3cb371 });
+            ground = new THREE.Mesh(groundGeo, groundMat);
+            ground.rotation.x = -Math.PI / 2;
+            ground.position.z = -100;
+            scene.add(ground);
+
+            airplane = new THREE.Group();
+            const bodyGeo = new THREE.ConeGeometry(0.5, 2.5, 8);
+            bodyGeo.rotateX(Math.PI / 2);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0xdc143c });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            airplane.add(body);
+
+            const wingGeo = new THREE.BoxGeometry(4.5, 0.08, 0.8);
+            const wingMat = new THREE.MeshStandardMaterial({ color: 0xffffff });
+            const wings = new THREE.Mesh(wingGeo, wingMat);
+            wings.position.set(0, 0, 0.1);
+            airplane.add(wings);
+
+            airplane.position.set(0, 4.5, 0);
+            scene.add(airplane);
+
+            const dotGeo = new THREE.SphereGeometry(0.2, 16, 16);
+            hipDot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0xff5722 }));
+            kneeDot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0x4caf50 }));
+            ankleDot = new THREE.Mesh(dotGeo, new THREE.MeshBasicMaterial({ color: 0x2196f3 }));
+            scene.add(hipDot);
+            scene.add(kneeDot);
+            scene.add(ankleDot);
+
+            const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, linewidth: 3 });
+            const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                new THREE.Vector3(-5, 6, 0), new THREE.Vector3(-5, 4.5, 0), new THREE.Vector3(-5, 3, 0)
+            ]);
+            trackingLine = new THREE.Line(lineGeo, lineMat);
+            scene.add(trackingLine);
+
+            spawnCoins();
+            animate();
+        }
+
+        function spawnCoins() {
+            coins.forEach(c => scene.remove(c));
+            coins = [];
+
+            const coinGeo = new THREE.CylinderGeometry(0.4, 0.4, 0.1, 16);
+            coinGeo.rotateX(Math.PI / 2);
+            const coinMat = new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.8, roughness: 0.2 });
+
+            for (let i = 0; i < 5; i++) {
+                const coinMesh = new THREE.Mesh(coinGeo, coinMat);
+                let randomLevel = heightLevels[Math.floor(Math.random() * heightLevels.length)];
+                coinMesh.position.set(0, randomLevel, -20 - (i * 25));
+                scene.add(coinMesh);
+                coins.push(coinMesh);
+            }
+        }
+
+        function startTimerSession() {
+            if (sessionTimerInterval) clearInterval(sessionTimerInterval);
+            
+            const selectedTime = document.querySelector('input[name="time-select"]:checked').value;
+            totalSeconds = parseInt(selectedTime) * 60;
+            isSessionRunning = true;
+            score = 0;
+            document.getElementById('score-val').innerText = score;
+
+            updateTimerUI();
+
+            sessionTimerInterval = setInterval(() => {
+                if (totalSeconds > 0) {
+                    totalSeconds--;
+                    updateTimerUI();
+                } else {
+                    clearInterval(sessionTimerInterval);
+                    isSessionRunning = false;
+                    alert(`Training session completed! You collected ${score} coins.`);
+                }
+            }, 1000);
+        }
+
+        function updateTimerUI() {
+            let minutes = Math.floor(totalSeconds / 60);
+            let seconds = totalSeconds % 60;
+            document.getElementById('timer-val').innerText = 
+                `${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (isSessionRunning) {
+                ground.position.z += 0.4;
+                if (ground.position.z > 100) ground.position.z = -100;
+
+                coins.forEach((coin) => {
+                    coin.rotation.y += 0.05;
+                    coin.position.z += 0.4;
+
+                    let dist = airplane.position.distanceTo(coin.position);
+                    if (dist < 1.2) {
+                        score++;
+                        document.getElementById('score-val').innerText = score;
+                        let randomLevel = heightLevels[Math.floor(Math.random() * heightLevels.length)];
+                        coin.position.set(0, randomLevel, -100);
+                    }
+
+                    if (coin.position.z > 15) {
+                        let randomLevel = heightLevels[Math.floor(Math.random() * heightLevels.length)];
+                        coin.position.set(0, randomLevel, -100);
+                    }
+                });
+            }
+
+            const selectedJoint = document.querySelector('input[name="joint-select"]:checked').value;
+            const currentA = currentAngles[selectedJoint];
+            const startA = startAngles[selectedJoint];
+            const endA = endAngles[selectedJoint];
+
+            if (startA !== null && endA !== null) {
+                let denominator = (endA - startA);
+                let percentage = denominator !== 0 ? (currentA - startA) / denominator : 0;
+                percentage = Math.max(0, Math.min(1, percentage)); 
+
+                let targetHeight = 1.5 + (percentage * 6);
+                airplane.position.y += (targetHeight - airplane.position.y) * 0.1;
+                
+                let nearestLevelIndex = 1;
+                let minDiff = Infinity;
+                heightLevels.forEach((lvl, idx) => {
+                    let diff = Math.abs(airplane.position.y - lvl);
+                    if(diff < minDiff){
+                        minDiff = diff;
+                        nearestLevelIndex = idx + 1;
+                    }
+                });
+                document.getElementById('flight-info').innerText = `Height: ${(airplane.position.y * 10).toFixed(0)}m | Level Zone: ${nearestLevelIndex}/5`;
+            } else {
+                document.getElementById('flight-info').innerText = "Calibrate limits below to engage flight controls!";
+            }
+
+            let baseHUD_X = -5.5;
+            let hipY = 6.5;
+            let kneeY = hipY - 1.5 * (currentAngles.hip / 180);
+            let ankleY = kneeY - 1.5 * (currentAngles.knee / 180);
+
+            hipDot.position.set(baseHUD_X, hipY, 0);
+            kneeDot.position.set(baseHUD_X + Math.sin(currentAngles.hip * Math.PI / 180) * 0.5, kneeY, 0);
+            ankleDot.position.set(kneeDot.position.x - Math.sin(currentAngles.knee * Math.PI / 180) * 0.5, ankleY, 0);
+
+            const points = [hipDot.position, kneeDot.position, ankleDot.position];
+            trackingLine.geometry.setFromPoints(points);
+
+            renderer.render(scene, camera);
+        }
+
+        function findAngle(p1, p2, p3) {
+            let ab = { x: p1.x - p2.x, y: p1.y - p2.y };
+            let cb = { x: p3.x - p2.x, y: p3.y - p2.y };
+            let dotProduct = (ab.x * cb.x + ab.y * cb.y);
+            let normAB = Math.sqrt(ab.x * ab.x + ab.y * ab.y);
+            let normCB = Math.sqrt(cb.x * cb.x + cb.y * cb.y);
+            let angle = Math.acos(dotProduct / (normAB * normCB));
+            return (angle * 180 / Math.PI);
+        }
+
+        function recordPosition(type) {
+            if (type === 'start') {
+                startAngles = { ...currentAngles };
+                document.getElementById('start-angles-record').innerHTML = 
+                    `Hip: <b>${startAngles.hip}°</b> | Knee: <b>${startAngles.knee}°</b> | Ankle: <b>${startAngles.ankle}°</b>`;
+            } else if (type === 'end') {
+                endAngles = { ...currentAngles };
+                document.getElementById('end-angles-record').innerHTML = 
+                    `Hip: <b>${endAngles.hip}°</b> | Knee: <b>${endAngles.knee}°</b> | Ankle: <b>${endAngles.ankle}°</b>`;
+            }
+        }
+
+        function onResults(results) {
+            if (!results.poseLandmarks) return;
+
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+
+            const landmarks = results.poseLandmarks;
+            const hip = landmarks[24];
+            const knee = landmarks[26];
+            const ankle = landmarks[28];
+            const footIndex = landmarks[32];
+
+            if (hip && knee && ankle) {
+                currentAngles.hip = Math.round(findAngle(landmarks[12], hip, knee));
+                currentAngles.knee = Math.round(findAngle(hip, knee, ankle));
+                currentAngles.ankle = Math.round(findAngle(knee, ankle, footIndex));
+
+                document.getElementById('current-hip').innerText = currentAngles.hip;
+                document.getElementById('current-knee').innerText = currentAngles.knee;
+                document.getElementById('current-ankle').innerText = currentAngles.ankle;
+
+                drawSkeletonLine(hip, knee, '#ff5722');
+                drawSkeletonLine(knee, ankle, '#4caf50');
+                drawJointCircle(hip, '#ff5722');
+                drawJointCircle(knee, '#4caf50');
+                drawJointCircle(ankle, '#2196f3');
+            }
+            canvasCtx.restore();
+        }
+
+        function drawJointCircle(landmark, color) {
+            canvasCtx.beginPath();
+            canvasCtx.arc(landmark.x * canvasElement.width, landmark.y * canvasElement.height, 8, 0, 2 * Math.PI);
+            canvasCtx.fillStyle = color;
+            canvasCtx.fill();
+            canvasCtx.strokeStyle = '#ffffff';
+            canvasCtx.lineWidth = 2;
+            canvasCtx.stroke();
+        }
+
+        function drawSkeletonLine(pt1, pt2, color) {
+            canvasCtx.beginPath();
+            canvasCtx.moveTo(pt1.x * canvasElement.width, pt1.y * canvasElement.height);
+            canvasCtx.lineTo(pt2.x * canvasElement.width, pt2.y * canvasElement.height);
+            canvasCtx.strokeStyle = color;
+            canvasCtx.lineWidth = 4;
+            canvasCtx.stroke();
+        }
+
+        const pose = new Pose({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/pose/${file}`
+        });
+
+        pose.setOptions({
+            modelComplexity: 1,
+            smoothLandmarks: true,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+        pose.onResults(onResults);
+
+        const cameraUtils = new Camera(videoElement, {
+            onFrame: async () => {
+                await pose.send({ image: videoElement });
+            },
+            width: 480,
+            height: 360
+        });
+
+        // Initialize application engines after authentication succeeds
+        function initAppEngine() {
+            init3D();
+            cameraUtils.start().catch(err => alert("Camera blocked or unavailable: " + err));
+        }
+    </script>
+</body>
+</html>
